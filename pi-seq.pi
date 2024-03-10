@@ -1,0 +1,101 @@
+set_volume! 1
+
+bpm = 120.0
+ms = 60 * 1000 / bpm
+l1 = ms / 4.0 / 1000.0
+
+def c(input, scale)
+  input.gsub(' ', '').split('').map { |x| Integer(x, 16) / scale }.ring
+end
+
+patterns = {
+  "bass" => {
+    "length" => 16,
+
+    "root"   => :f1,
+    "scale"  => :major,
+
+    "trig"  => c("1", 1),
+    "amp"   => c("8", 8.0),
+    "arp"   => c("0", 1),
+    "note"  => c("11c0 0141 1c42 a101", 1),
+    "param" => c("6574a", 16.0),
+    "rel"   => c("4c4", 4.0)
+  },
+
+  "kick" => {
+    "length" => 8,
+
+    "root"   => :c4,
+    "scale"  => :chromatic,
+
+    "trig"  => c("101", 1),
+    "amp"   => c("c242", 8.0),
+    "arp"   => c("0", 1),
+    "note"  => c("00f", 1),
+    "param" => c("0", 16.0),
+    "rel"   => c("4", 4.0)
+  },
+
+  "clap" => {
+    "length" => 8,
+
+    "root"   => :e4,
+    "scale"  => :chromatic,
+
+    "trig"  => c("0000 1000", 1),
+    "amp"   => c("8", 8.0),
+    "arp"   => c("0", 1),
+    "note"  => c("0", 1),
+    "param" => c("0", 16.0),
+    "rel"   => c("4", 4.0)
+  },
+}
+
+define :seq do |name, bang|
+  pattern = patterns[name]
+
+  live_loop name do
+    step = tick % pattern["length"]
+
+    trig = pattern["trig"][step] > 0
+
+    notes = scale pattern["root"], pattern["scale"], num_octaves: 2
+    index = pattern["note"][step]
+    note = notes[index]
+
+    amp = pattern["amp"][step]
+
+    rel = pattern["rel"][step]
+    length = l1 * rel
+
+    param = pattern["param"][step]
+
+    if trig
+      in_thread do
+        bang.call(note, amp, length, param)
+      end
+    end
+
+    sleep l1
+  end
+end
+
+seq "bass", -> (note, amp, length, param) {
+  use_synth :tb303
+  play note, vel_f: amp, release: length / 2, cutoff: 45 + 70 * param
+}
+
+seq "kick", -> (note, amp, length, param) {
+  sample :bd_fat, rpitch: note - note(:c4), amp: amp * 5, release: length * 1
+}
+
+seq "clap", -> (note, amp, length, param) {
+  sample :sn_zome, rpitch: note - note(:c4), amp: amp, release: length
+}
+
+# seq "midi", -> (note, amp, length) {
+#   midi_note_on note, vel_f: pattern["amp"][step], port: "iac_driver_bus_1", channel: 1
+#   sleep length
+#   midi_note_off note, port: "iac_driver_bus_1", channel: 1
+# }
